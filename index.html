@@ -178,27 +178,77 @@ function render() {
     btn.addEventListener("click", () => cancel(btn.dataset.id)));
 }
 
-async function book(inst, date) {
+function book(inst, date) {
   const name = nameEl.value.trim();
   if (!name) { setStatus("Type your name first.", true); return; }
-  setStatus("Booking...");
-  try {
-    const data = await jsonp({ action:"book", instrument:inst, date:date, name:name });
-    if (!data.ok) { setStatus(data.error || "Something went wrong.", true); return; }
-    setStatus("");
-    await load();
-  } catch (e) { setStatus("Network error. Try again.", true); }
+
+  // Optimistic: add it locally and redraw NOW, so the click feels instant.
+  const tempId = "temp_" + Date.now();
+  const optimistic = { id: tempId, instrument: inst, date: date, name: name };
+  bookings.push(optimistic);
+  render();
+  setStatus("Saving...");
+
+  // Then save in the background and reconcile.
+  jsonp({ action:"book", instrument:inst, date:date, name:name })
+    .then(data => {
+      if (!data.ok) {
+        // Rejected (e.g. someone grabbed it first) -> undo the local add.
+        bookings = bookings.filter(b => b.id !== tempId);
+        render();
+        setStatus(data.error || "Couldn't book that day.", true);
+        return;
+      }
+      // Swap our temporary id for the real one from the server.
+      const b = bookings.find(x => x.id === tempId);
+      if (b) b.id = data.id;
+      setStatus("");
+    })
+    .catch(() => {
+      bookings = bookings.filter(b => b.id !== tempId);
+      render();
+      setStatus("Network error - booking not saved.", true);
+    });
 }
 
-async function cancel(id) {
-  setStatus("Cancelling...");
-  try {
-    const data = await jsonp({ action:"cancel", id:id });
-    if (!data.ok) { setStatus(data.error || "Something went wrong.", true); return; }
-    setStatus("");
-    await load();
-  } catch (e) { setStatus("Network error. Try again.", true); }
+function cancel(id) {
+  // Optimistic: remove locally and redraw now.
+  const removed = bookings.find(b => b.id === id);
+  bookings = bookings.filter(b => b.id !== id);
+  render();
+  setStatus("Saving...");
+
+  jsonp({ action:"cancel", id:id })
+    .then(data => {
+      if (!data.ok) {
+        // Put it back if the server refused.
+        if (removed) { bookings.push(removed); render(); }
+        setStatus(data.error || "Couldn't cancel.", true);
+        return;
+      }
+      setStatus("");
+    })
+    .catch(() => {
+      if (removed) { bookings.push(removed); render(); }
+      setStatus("Network error - not cancelled.", true);
+    });
 }
+
+// Silent refresh so bookings made elsewhere show up, without a visible reload.
+async function quietRefresh() {
+  try {
+    const data = await jsonp({});
+    INSTRUMENTS = data.instruments;
+    // Keep any optimistic temp bookings that haven't been confirmed yet.
+    const pending = bookings.filter(b => String(b.id).startsWith("temp_"));
+    bookings = data.bookings.concat(pending);
+    render();
+  } catch (e) { /* ignore; we'll try again next tick */ }
+}
+setInterval(quietRefresh, 30000);                 // every 30s
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) quietRefresh();           // and when you return to the tab
+});
 
 load();
 </script>
