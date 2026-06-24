@@ -12,7 +12,7 @@
   * { box-sizing: border-box; }
   body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
          background: var(--bg); color: var(--ink); line-height: 1.5; }
-  .wrap { max-width: 1000px; margin: 0 auto; padding: 32px 20px 64px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 20px 64px; }
   h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.02em; }
   .sub { color: var(--muted); margin: 0 0 24px; font-size: 0.95rem; }
 
@@ -46,17 +46,22 @@
 
   .scroll { overflow-x: auto; }
   table { border-collapse: collapse; background: var(--card); border: 1px solid var(--line);
-          border-radius: 12px; overflow: hidden; width: 100%; min-width: 760px; }
+          border-radius: 12px; overflow: hidden; width: 100%; min-width: 1080px;
+          table-layout: fixed; }
   th, td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: 0; }
   th:last-child, td:last-child { border-right: none; }
   tr:last-child td { border-bottom: none; }
-  thead th { background: #faf8f5; font-size: 0.8rem; padding: 8px 6px; color: var(--muted); font-weight: 600; }
+  /* First column (instrument names) fixed width; the 7 day columns share the rest equally. */
+  th:first-child, td:first-child { width: 230px; }
+  th:not(:first-child), td:not(:first-child) { width: calc((100% - 230px) / 7); }
+  thead th { background: #faf8f5; font-size: 0.82rem; padding: 8px 6px; color: var(--muted); font-weight: 600; }
   thead th.today { color: var(--accent); }
-  .inst { text-align: left; padding: 10px 12px; font-size: 0.85rem; background: #faf8f5;
+  .inst { text-align: left; padding: 10px 14px; font-size: 0.88rem; background: #faf8f5;
           white-space: nowrap; font-weight: 500; }
 
   .cell { width: 100%; min-height: 46px; border: none; background: #fff; cursor: pointer;
-          font: inherit; font-size: 0.78rem; padding: 8px 4px; transition: background 0.12s; }
+          font: inherit; font-size: 0.82rem; padding: 8px 6px; transition: background 0.12s;
+          white-space: nowrap; }
   .cell:hover { background: #fff7ed; }
   .cell.taken { background: var(--taken); cursor: default; }
   .cell.mine { background: #fde7d6; color: var(--accent); font-weight: 600; }
@@ -108,8 +113,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ===== FILL THESE IN (from Supabase: Project Settings > API) =====
-const SUPABASE_URL = "https://beoznyfeufjwdvtzvrhv.supabase.co";      // e.g. https://abcd1234.supabase.co
-const SUPABASE_KEY = "sb_publishable_5CbBPJWyI5aaOw34mLAF6A_rlsLxC_u";  // the publishable / anon key
+const SUPABASE_URL = "https://beoznyfeufjwdvtzvrhv.supabase.co";
+const SUPABASE_KEY = "sb_publishable_5CbBPJWyI5aaOw34mLAF6A_rlsLxC_u";
 // =================================================================
 
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
