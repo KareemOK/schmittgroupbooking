@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Instrument Booking</title>
+<style>
+  :root {
+    --bg: #f7f6f3; --card: #fff; --ink: #1d1c1a; --muted: #7a766f;
+    --line: #e4e1da; --accent: #c2410c; --taken: #efe9e2;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+         background: var(--bg); color: var(--ink); line-height: 1.5; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 0.95rem; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 20px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  input { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .weeknav { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+  .weeknav button { font: inherit; cursor: pointer; border: 1px solid var(--line);
+    background: #fff; border-radius: 8px; padding: 6px 12px; }
+  .weeknav button:hover { background: #fff7ed; }
+  .weeknav .label { font-weight: 600; }
+
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; background: var(--card); border: 1px solid var(--line);
+          border-radius: 12px; overflow: hidden; width: 100%; min-width: 760px; }
+  th, td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: 0; }
+  th:last-child, td:last-child { border-right: none; }
+  tr:last-child td { border-bottom: none; }
+  thead th { background: #faf8f5; font-size: 0.8rem; padding: 8px 6px; color: var(--muted); font-weight: 600; }
+  thead th.today { color: var(--accent); }
+  .inst { text-align: left; padding: 10px 12px; font-size: 0.85rem; background: #faf8f5;
+          white-space: nowrap; font-weight: 500; }
+
+  .cell { width: 100%; min-height: 46px; border: none; background: #fff; cursor: pointer;
+          font: inherit; font-size: 0.78rem; padding: 8px 4px; transition: background 0.12s; }
+  .cell:hover { background: #fff7ed; }
+  .cell.taken { background: var(--taken); cursor: default; }
+  .cell.mine { background: #fde7d6; color: var(--accent); font-weight: 600; }
+  .cell .free { color: #b8b2a8; }
+
+  .status { margin-top: 16px; font-size: 0.9rem; color: var(--muted); min-height: 1.2em; }
+  .err { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Instrument Booking</h1>
+  <p class="sub">Type your name, then tap a free day to book an instrument. Tap your own booking to cancel.</p>
+
+  <div class="controls">
+    <div class="field">
+      <label for="name">Your name</label>
+      <input id="name" type="text" placeholder="e.g. Sam" autocomplete="name">
+    </div>
+  </div>
+
+  <div class="weeknav">
+    <button id="prev">&larr; Prev</button>
+    <span class="label" id="weeklabel"></span>
+    <button id="next">Next &rarr;</button>
+    <button id="todayBtn">Today</button>
+  </div>
+
+  <div class="scroll"><table id="grid"></table></div>
+  <p class="status" id="status">Loading...</p>
+</div>
+
+<script>
+// ===== PASTE YOUR APPS SCRIPT WEB APP URL HERE (ends in /exec) =====
+const API_URL = "https://script.google.com/a/macros/tcd.ie/s/AKfycbzIjgO1RvDh7DbWzdUe9Xp4-7neHHYlCguykaMgMvCcCRn8TXJDX7_Bib-dESou6xjfrg/exec";
+// ==================================================================
+
+let INSTRUMENTS = [];
+let bookings = [];
+let weekStart = startOfWeek(new Date());   // Monday of current week
+
+const $ = id => document.getElementById(id);
+const nameEl = $("name"), gridEl = $("grid"), statusEl = $("status"), weekLabel = $("weeklabel");
+
+nameEl.value = localStorage.getItem("bookingName") || "";
+nameEl.addEventListener("input", () => { localStorage.setItem("bookingName", nameEl.value); render(); });
+
+$("prev").addEventListener("click", () => { weekStart = addDays(weekStart, -7); render(); });
+$("next").addEventListener("click", () => { weekStart = addDays(weekStart, 7); render(); });
+$("todayBtn").addEventListener("click", () => { weekStart = startOfWeek(new Date()); render(); });
+
+function startOfWeek(d) {
+  const x = new Date(d);
+  const day = (x.getDay() + 6) % 7;   // Mon=0 ... Sun=6
+  x.setDate(x.getDate() - day);
+  x.setHours(0,0,0,0);
+  return x;
+}
+function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function ymd(d) {
+  return d.getFullYear() + "-" +
+    String(d.getMonth()+1).padStart(2,"0") + "-" +
+    String(d.getDate()).padStart(2,"0");
+}
+function setStatus(msg, isErr) { statusEl.textContent = msg; statusEl.className = isErr ? "status err" : "status"; }
+
+// --- JSONP helper (avoids CORS on institutional Google accounts) ---
+let jc = 0;
+function jsonp(params) {
+  return new Promise((resolve, reject) => {
+    const cb = "cb_" + (jc++) + "_" + Date.now();
+    const t = setTimeout(() => { cleanup(); reject(new Error("timeout")); }, 15000);
+    function cleanup() { clearTimeout(t); delete window[cb]; if (s.parentNode) s.parentNode.removeChild(s); }
+    window[cb] = d => { cleanup(); resolve(d); };
+    const qs = Object.keys(params).map(k => encodeURIComponent(k)+"="+encodeURIComponent(params[k])).join("&");
+    const s = document.createElement("script");
+    s.src = API_URL + "?callback=" + cb + (qs ? "&"+qs : "");
+    s.onerror = () => { cleanup(); reject(new Error("network")); };
+    document.body.appendChild(s);
+  });
+}
+
+async function load() {
+  try {
+    const data = await jsonp({});
+    INSTRUMENTS = data.instruments;
+    bookings = data.bookings;
+    render();
+    setStatus("");
+  } catch (e) {
+    setStatus("Couldn't load bookings. Check the API URL.", true);
+  }
+}
+
+const DAYNAMES = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+function render() {
+  if (!INSTRUMENTS.length) return;
+  const days = [];
+  for (let i = 0; i < 7; i++) days.push(addDays(weekStart, i));
+  const todayStr = ymd(new Date());
+  const myName = nameEl.value.trim();
+
+  weekLabel.textContent = days[0].toLocaleDateString(undefined,{day:"numeric",month:"short"})
+    + " – " + days[6].toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"});
+
+  let html = "<thead><tr><th class='inst'>Instrument</th>";
+  for (const d of days) {
+    const ds = ymd(d);
+    html += `<th class="${ds===todayStr?"today":""}">${DAYNAMES[(d.getDay()+6)%7]}<br>${d.getDate()}/${d.getMonth()+1}</th>`;
+  }
+  html += "</tr></thead><tbody>";
+
+  for (const inst of INSTRUMENTS) {
+    html += `<tr><td class="inst">${inst}</td>`;
+    for (const d of days) {
+      const ds = ymd(d);
+      const existing = bookings.find(b => b.instrument === inst && b.date === ds);
+      if (existing) {
+        const mine = myName !== "" && existing.name === myName;
+        html += `<td><button class="cell ${mine?"mine":"taken"}" data-id="${existing.id}" ${mine?"":"disabled"}>${mine?"Cancel":existing.name}</button></td>`;
+      } else {
+        html += `<td><button class="cell" data-inst="${encodeURIComponent(inst)}" data-date="${ds}"><span class="free">+</span></button></td>`;
+      }
+    }
+    html += "</tr>";
+  }
+  html += "</tbody>";
+  gridEl.innerHTML = html;
+
+  gridEl.querySelectorAll(".cell[data-date]").forEach(btn =>
+    btn.addEventListener("click", () => book(decodeURIComponent(btn.dataset.inst), btn.dataset.date)));
+  gridEl.querySelectorAll(".cell.mine").forEach(btn =>
+    btn.addEventListener("click", () => cancel(btn.dataset.id)));
+}
+
+async function book(inst, date) {
+  const name = nameEl.value.trim();
+  if (!name) { setStatus("Type your name first.", true); return; }
+  setStatus("Booking...");
+  try {
+    const data = await jsonp({ action:"book", instrument:inst, date:date, name:name });
+    if (!data.ok) { setStatus(data.error || "Something went wrong.", true); return; }
+    setStatus("");
+    await load();
+  } catch (e) { setStatus("Network error. Try again.", true); }
+}
+
+async function cancel(id) {
+  setStatus("Cancelling...");
+  try {
+    const data = await jsonp({ action:"cancel", id:id });
+    if (!data.ok) { setStatus(data.error || "Something went wrong.", true); return; }
+    setStatus("");
+    await load();
+  } catch (e) { setStatus("Network error. Try again.", true); }
+}
+
+load();
+</script>
+</body>
+</html>
