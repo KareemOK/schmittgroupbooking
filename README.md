@@ -1,1 +1,1 @@
-Booking system site for the Schmitt Group at Trinity College Dublin. Developed using Clause Opus 4.8.
+Booking system site for the Schmitt Group at Trinity College Dublin. Developed using Claude Opus 4.8.
